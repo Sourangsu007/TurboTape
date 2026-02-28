@@ -1,4 +1,4 @@
-# TechnoFunda Trading Dashboard
+# Trading Dashboard
 
 A comprehensive, full-stack stock analysis platform designed for Indian markets. This application combines fundamental screening, technical analysis, and automated decision-making into a unified, premium dashboard.
 
