@@ -1,0 +1,40 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: FastAPI",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "main:app",
+                "--reload",
+                "--port",
+                "8000"
+            ],
+            "jinja": true,
+            "cwd": "${workspaceFolder}/API",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/API"
+            },
+            "python": "${workspaceFolder}/API/.venv/Scripts/python.exe"
+        },
+        {
+            "name": "Vite: UI",
+            "type": "node",
+            "request": "launch",
+            "command": "npm run dev",
+            "cwd": "${workspaceFolder}/UI"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Full Stack: API + UI",
+            "configurations": [
+                "Python: FastAPI",
+                "Vite: UI"
+            ],
+            "stopAll": true
+        }
+    ]
+}

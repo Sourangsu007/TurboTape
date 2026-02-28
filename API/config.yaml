@@ -1,0 +1,44 @@
+# config.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# Each model gets a UNIQUE model_name so the Router can reference them
+# individually in the fallbacks list.
+# API keys use the "os.environ/KEY_NAME" syntax — LiteLLM resolves them at
+# runtime from the environment, so nothing is hardcoded.
+# ─────────────────────────────────────────────────────────────────────────────
+
+model_list:
+
+  # ── Primary ────────────────────────────────────────────────────────────────
+  - model_name: llm-primary
+    litellm_params:
+      model: gemini/gemini-3-flash-preview # correct model ID
+      api_key: "os.environ/GEMINI_API_KEY"
+
+  # ── Secondary ──────────────────────────────────────────────────────────────
+  - model_name: llm-secondary
+    litellm_params:
+      model: groq/meta-llama/llama-3.3-70b-versatile
+      api_key: "os.environ/GROQ_API_KEY"
+
+  # ── Tertiary ───────────────────────────────────────────────────────────────
+  - model_name: llm-tertiary
+    litellm_params:
+      model: groq/meta-llama/llama-4-scout-17b-16e-instruct
+      api_key: "os.environ/GROQ_API_KEY"
+
+router_settings:
+  # "usage-based-routing" or "least-busy" also work; simple-shuffle is random
+  # and does NOT honour order — so we leave routing_strategy out entirely and
+  # let the explicit fallbacks list below control priority.
+
+  # How many times to retry a single model before moving to the next fallback
+  num_retries: 1
+
+  # Explicit ordered fallback chain:
+  # If llm-primary fails → try llm-secondary → try llm-tertiary
+  fallbacks:
+    - llm-primary:
+        - llm-secondary
+        - llm-tertiary
+    - llm-secondary:
+        - llm-tertiary
