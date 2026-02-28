@@ -5,7 +5,7 @@ You are a stock market expert. Your task is to find the official, `yfinance` (Ya
 2. Identify the Industry sector the stock belongs to.
 3. Determine if the company is a Financial institution (Banking, NBFC, Insurance, Fintech, etc.).
 4. If the stock is traded on multiple exchanges, prioritize the primary exchange (e.g., NSE or BSE for Indian stocks).
-5. The response MUST be a valid JSON object.
+5. The response MUST be a valid **JSON** object.
 6. If no ticker name can be found, return a blank value for the `tickerName` field.
 
 ### Response Format:

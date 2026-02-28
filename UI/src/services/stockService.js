@@ -15,9 +15,9 @@ const stockService = {
             throw error;
         }
     },
-    rankAll: async (data) => {
+    rankAll: async (data, portfolio_type) => {
         try {
-            const response = await axios.post(`${API_BASE_URL}/core/analyzeall`, {
+            const response = await axios.post(`${API_BASE_URL}/analyzeall/${portfolio_type}`, {
                 data: data
             });
             return response.data;

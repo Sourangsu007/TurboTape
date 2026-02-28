@@ -136,22 +136,32 @@ class ScreenerScraper:
     # ── Parsing helpers ───────────────────────────────────────────────────────
 
     def _parse_number(self, text: str) -> Optional[float]:
-        """Convert Screener formatted strings like '1,23,456.78' or '12.5%' to float."""
+        """Convert Screener formatted strings to float using regex for robustness."""
         if not text:
             return None
-        text = text.strip().replace(",", "").replace("%", "").replace("₹", "").replace("Cr", "").strip()
+        
+        # Handle "High / Low" fields by taking the first part
+        if "/" in text:
+            text = text.split("/")[0].strip()
+
         # Handle negative in parentheses: (123) → -123
-        if text.startswith("(") and text.endswith(")"):
-            text = "-" + text[1:-1]
-        try:
-            return float(text)
-        except (ValueError, TypeError):
-            return None
+        if text.strip().startswith("(") and text.strip().endswith(")"):
+            text = "-" + text.strip()[1:-1]
+
+        # Extract only digits, dots, and optional leading minus
+        match = re.search(r"-?\d+\.?\d*", text.replace(",", ""))
+        if match:
+            try:
+                return float(match.group())
+            except (ValueError, TypeError):
+                return None
+        return None
 
     def _extract_table(self, soup: BeautifulSoup, section_id: str) -> Optional[pd.DataFrame]:
         """
         Extract a data table from a Screener section (e.g. #profit-loss, #balance-sheet).
         Returns a DataFrame with years as columns and line items as the index.
+        Columns are REVERSED to be latest-first for analysis logic.
         """
         section = soup.find("section", {"id": section_id})
         if not section:
@@ -174,7 +184,9 @@ class ScreenerScraper:
             cells = row.find_all(["th", "td"])
             if not cells:
                 continue
-            label = cells[0].get_text(strip=True)
+                
+            # Clean label: "Sales +" -> "Sales"
+            label = cells[0].get_text(strip=True).replace("+", "").strip()
             values = []
             for c in cells[1:]:
                 num = self._parse_number(c.get_text(strip=True))
@@ -185,8 +197,12 @@ class ScreenerScraper:
         if not data:
             return None
 
-        df = pd.DataFrame(data, index=years).T  # rows = metrics, cols = years
-        # Convert year strings to datetime-like for consistency
+        # Create DF: Index=Labels, Columns=Years
+        df = pd.DataFrame(data, index=years).T  
+        
+        # REVERSE columns to be latest-first (latest year/TTM at index 0)
+        df = df[df.columns[::-1]]
+        
         return df
 
     def _get_series(self, df: Optional[pd.DataFrame], possible_names: list) -> Optional[pd.Series]:
@@ -293,28 +309,38 @@ class ScreenerScraper:
             if top_ratios:
                 for li in top_ratios.find_all("li"):
                     name_tag = li.find("span", {"class": "name"})
-                    val_tag = li.find("span", {"class": "value"}) or li.find("span", {"id": True})
+                    val_tag = li.find("span", {"class": "value"}) 
                     if name_tag and val_tag:
                         name = name_tag.get_text(strip=True).lower()
-                        val = self._parse_number(val_tag.get_text(strip=True))
-                        if "high" in name and "52" in name:
-                            info["fiftyTwoWeekHigh"] = val
-                        elif "low" in name and "52" in name:
-                            info["fiftyTwoWeekLow"] = val
+                        # Some values contain multiple numbers (High / Low)
+                        num_tags = val_tag.find_all("span", {"class": "number"})
+                        
+                        if "high" in name and "low" in name:
+                            # Split High / Low
+                            if len(num_tags) >= 2:
+                                info["fiftyTwoWeekHigh"] = self._parse_number(num_tags[0].get_text(strip=True))
+                                info["fiftyTwoWeekLow"] = self._parse_number(num_tags[1].get_text(strip=True))
+                            else:
+                                raw_text = val_tag.get_text(strip=True)
+                                if "/" in raw_text:
+                                    parts = raw_text.split("/")
+                                    info["fiftyTwoWeekHigh"] = self._parse_number(parts[0])
+                                    info["fiftyTwoWeekLow"] = self._parse_number(parts[1])
+                        
                         elif "market cap" in name or "mkt cap" in name:
-                            info["marketCap"] = val
+                            info["marketCap"] = self._parse_number(val_tag.get_text(strip=True))
                         elif "current price" in name or "price" == name:
-                            info["currentPrice"] = val or info.get("currentPrice")
+                            info["currentPrice"] = self._parse_number(val_tag.get_text(strip=True)) or info.get("currentPrice")
                         elif "roe" in name:
-                            info["roe"] = val
+                            info["roe"] = self._parse_number(val_tag.get_text(strip=True))
                         elif "roce" in name:
-                            info["roce"] = val
+                            info["roce"] = self._parse_number(val_tag.get_text(strip=True))
                         elif "p/e" in name or "pe" == name:
-                            info["pe"] = val
+                            info["pe"] = self._parse_number(val_tag.get_text(strip=True))
                         elif "book value" in name:
-                            info["bookValue"] = val
+                            info["bookValue"] = self._parse_number(val_tag.get_text(strip=True))
                         elif "dividend yield" in name:
-                            info["dividendYield"] = val
+                            info["dividendYield"] = self._parse_number(val_tag.get_text(strip=True))
         except Exception as e:
             logger.warning(f"Error parsing price info: {e}")
         return info
@@ -368,6 +394,22 @@ class ScreenerScraper:
         except Exception as e:
             logger.warning(f"Consistency score error: {e}")
         return result
+
+    def _is_financial_institution(self, soup: BeautifulSoup, industry: str) -> bool:
+        """Heuristic to detect if a company is a financial institution."""
+        # Check industry
+        financial_keywords = ["bank", "finance", "nbfc", "insurance", "fintech", "lending", "investment"]
+        if industry and any(k in industry.lower() for k in financial_keywords):
+            return True
+        
+        # Check about section
+        about_tag = soup.find("div", {"class": "about"})
+        if about_tag:
+            about_text = about_tag.get_text(strip=True).lower()
+            if any(k in about_text for k in financial_keywords):
+                return True
+                
+        return False
 
     # ── Main public method ────────────────────────────────────────────────────
 
@@ -608,6 +650,29 @@ class ScreenerScraper:
             # 9. Market & Ownership
             metrics["Market Capitalization"] = price_info.get("marketCap", "N/A")
             metrics["Promoter holding"] = shareholding.get("promoterHolding", "N/A")
+            
+            # --- Missing Price/Ratio Info (Crucial for UI) ---
+            metrics["currentPrice"] = price_info.get("currentPrice", "N/A")
+            metrics["fiftyTwoWeekHigh"] = price_info.get("fiftyTwoWeekHigh", "N/A")
+            metrics["fiftyTwoWeekLow"] = price_info.get("fiftyTwoWeekLow", "N/A")
+            metrics["bookValue"] = price_info.get("bookValue", "N/A")
+            metrics["dividendYield"] = price_info.get("dividendYield", "N/A")
+            metrics["trailingPE"] = price_info.get("pe", "N/A") # Map to trailingPE
+            metrics["roe"] = price_info.get("roe", "N/A")
+            metrics["roce"] = price_info.get("roce", "N/A")
+
+            # Industry & Financial Detection
+            industry_tag = soup.find("p", {"class": "sub"}) 
+            # Industry is usually in breadcrumbs or peer section, but we can look broadly
+            industry = ""
+            peer_section = soup.find("section", {"id": "peers"})
+            if peer_section:
+                ind_link = peer_section.find("a", href=re.compile(r"/company/industry/"))
+                if ind_link:
+                    industry = ind_link.get_text(strip=True)
+            
+            metrics["Industry"] = industry
+            metrics["isFinancial"] = self._is_financial_institution(soup, industry)
 
             # 10. YOY Quarterly Sales Growth (last 5 quarters, most recent vs same quarter last year)
             if q_rev_series is not None and len(q_rev_series.dropna()) >= 5:

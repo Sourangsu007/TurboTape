@@ -110,7 +110,7 @@ def _http_get(
     backoff:         float = 5.0,
     provider_name:   str   = "HTTP",
 ) -> requests.Response:
-    timeout = (connect_timeout, read_timeout)
+    timeout  = (connect_timeout, read_timeout)
     last_exc = None
 
     for attempt in range(1, max_retries + 1):
@@ -137,7 +137,7 @@ def _http_get(
             logger.warning(f"[{provider_name}] ConnectionError on attempt {attempt}/{max_retries}. Retrying in {wait:.0f}s…")
             time.sleep(wait)
 
-        except requests.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError:
             raise
 
     raise requests.exceptions.RetryError(
@@ -152,7 +152,7 @@ def _http_get(
 def _fetch_yfinance(ticker_ns: str, period: str, interval: str) -> pd.DataFrame:
     if not _YFINANCE_AVAILABLE:
         raise ImportError("yfinance not installed. Run: pip install yfinance")
-    t = yf.Ticker(ticker_ns)
+    t  = yf.Ticker(ticker_ns)
     df = t.history(period=period, interval=interval, auto_adjust=True)
     if df.empty:
         raise ValueError(f"yfinance returned empty DataFrame for {ticker_ns}")
@@ -169,7 +169,7 @@ def _fetch_stooq(ticker_base: str, period: str) -> pd.DataFrame:
     start = end - timedelta(days=days)
 
     stooq_symbol = f"{ticker_base.lower()}.ns"
-    url = "https://stooq.com/q/d/l/"
+    url    = "https://stooq.com/q/d/l/"
     params = {
         "s":  stooq_symbol,
         "d1": start.strftime("%Y%m%d"),
@@ -177,7 +177,11 @@ def _fetch_stooq(ticker_base: str, period: str) -> pd.DataFrame:
         "i":  "d",
     }
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        )
     }
 
     resp = requests.get(url, params=params, headers=headers, timeout=(10, 30))
@@ -188,14 +192,12 @@ def _fetch_stooq(ticker_base: str, period: str) -> pd.DataFrame:
 
     from io import StringIO
     df = pd.read_csv(StringIO(resp.text))
-
     if df.empty:
         raise ValueError(f"Stooq returned empty CSV for '{stooq_symbol}'")
 
     df.columns = [c.lower().strip() for c in df.columns]
     df["date"] = pd.to_datetime(df["date"])
     df.set_index("date", inplace=True)
-
     return _clean_df(df)
 
 
@@ -213,7 +215,7 @@ def _fetch_twelve_data(
     if not api_key:
         raise ValueError("Twelve Data API key not configured — skipping")
 
-    period_bars = {
+    period_bars  = {
         "1mo": 30,  "3mo": 90,  "6mo": 130,
         "1y": 252,  "2y": 504,  "5y": 1260,  "10y": 2520,
     }
@@ -222,7 +224,7 @@ def _fetch_twelve_data(
         "1h": "1h",   "30m": "30min", "15m": "15min",
         "5m": "5min", "1m":  "1min",
     }
-    exchange_code = "BSE" if yf_ticker and yf_ticker.endswith(".BO") else "NSE"
+    exchange_code = "BSE" if yf_ticker and yf_ticker.endswith(".BO") else "XNSE"
     params = {
         "symbol":     ticker_base,
         "exchange":   exchange_code,
@@ -277,11 +279,15 @@ def _fetch_tiingo(
     days  = period_days.get(period, 365)
     start = (datetime.today() - timedelta(days=days)).strftime("%Y-%m-%d")
 
-    url = f"https://api.tiingo.com/tiingo/daily/{ticker_base}/prices"
-    params = {"startDate": start}
+    # For Indian equities, Tiingo requires prepending 'nse/' (e.g. nse/polycab)
+    # The default ticker_base we receive is just 'POLYCAB'
+    tiingo_ticker = f"nse/{ticker_base.lower()}"
+    
+    url     = f"https://api.tiingo.com/tiingo/daily/{tiingo_ticker}/prices"
+    params  = {"startDate": start}
     headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Token {api_key}"
+        "Content-Type":  "application/json",
+        "Authorization": f"Token {api_key}",
     }
 
     session = _make_http_session(max_retries=max_retries)
@@ -496,8 +502,8 @@ def _calc_supertrend(
         direction  = pd.Series(0,      index=close.index, dtype=int)
 
         for i in range(period, len(close)):
-            ub = upper_band.iloc[i]
-            lb = lower_band.iloc[i]
+            ub      = upper_band.iloc[i]
+            lb      = lower_band.iloc[i]
             prev_ub = upper_band.iloc[i - 1]
             prev_lb = lower_band.iloc[i - 1]
 
@@ -530,6 +536,12 @@ def _calc_donchian(
     low:    pd.Series,
     length: int = 20,
 ) -> dict:
+    """
+    Donchian Channels.
+    upper  = highest high over the last `length` bars
+    lower  = lowest  low  over the last `length` bars
+    middle = (upper + lower) / 2
+    """
     empty = {"upper": None, "middle": None, "lower": None}
     if len(high) < length:
         return empty
@@ -543,6 +555,194 @@ def _calc_donchian(
         return empty
 
 
+def _calc_donchian_slope(
+    high:        pd.Series,
+    low:         pd.Series,
+    dc_length:   int = 20,
+    slope_bars:  int = 5,
+) -> dict:
+    """
+    Donchian Channel Slope.
+
+    Measures the rate of change of the Donchian midline over the last
+    `slope_bars` periods.  A rising slope signals a widening / bullish
+    channel; a falling slope signals a narrowing / bearish channel.
+
+    Parameters
+    ----------
+    dc_length   : rolling window for the Donchian channel itself (default 20)
+    slope_bars  : how many bars back to measure the midline change  (default 5)
+
+    Returns
+    -------
+    slope           : absolute change in midline per bar (price units)
+    slope_pct       : percentage change in midline per bar (relative to current mid)
+    slope_direction : "rising" | "falling" | "flat"
+                      flat = |slope_pct| < 0.05 % per bar
+    """
+    empty = {"slope": None, "slope_pct": None, "slope_direction": None}
+    min_bars = dc_length + slope_bars
+    if len(high) < min_bars:
+        return empty
+    try:
+        upper  = high.rolling(window=dc_length).max()
+        lower  = low.rolling(window=dc_length).min()
+        middle = (upper + lower) / 2
+
+        mid_now  = middle.iloc[-1]
+        mid_prev = middle.iloc[-(slope_bars + 1)]
+
+        if pd.isna(mid_now) or pd.isna(mid_prev) or mid_prev == 0:
+            return empty
+
+        slope     = (mid_now - mid_prev) / slope_bars          # price units / bar
+        slope_pct = (slope / mid_prev) * 100                   # % per bar
+
+        if abs(slope_pct) < 0.05:
+            direction = "flat"
+        elif slope_pct > 0:
+            direction = "rising"
+        else:
+            direction = "falling"
+
+        return {
+            "slope":           _safe(slope),
+            "slope_pct":       _safe(slope_pct),
+            "slope_direction": direction,
+        }
+    except Exception as e:
+        logger.warning(f"Donchian Slope calculation error: {e}")
+        return empty
+
+
+def _calc_candle_wick(
+    open_:  pd.Series,
+    high:   pd.Series,
+    low:    pd.Series,
+    close:  pd.Series,
+) -> dict:
+    """
+    Candle Wick Size Analysis for the most recent candle.
+
+    Definitions
+    -----------
+    candle_range  = high - low  (total candle length)
+    body          = abs(close - open)
+    body_top      = max(open, close)
+    body_bottom   = min(open, close)
+    upper_wick    = high - body_top
+    lower_wick    = body_bottom - low
+
+    Ratios (each expressed as % of candle_range so they sum to ~100 %)
+    -------------------------------------------------------------------
+    upper_wick_pct  = upper_wick / candle_range * 100
+    lower_wick_pct  = lower_wick / candle_range * 100
+    body_pct        = body       / candle_range * 100
+
+    candle_type     : "bullish"  close > open
+                      "bearish"  close < open
+                      "doji"     body < 5 % of range
+
+    Special pattern flags  (each True/False)
+    ----------------------------------------
+    is_hammer       : lower_wick >= 2× body AND upper_wick <= 0.1× range
+                      AND body_pct <= 35 % — bullish reversal signal
+    is_shooting_star: upper_wick >= 2× body AND lower_wick <= 0.1× range
+                      AND body_pct <= 35 % — bearish reversal signal
+    is_doji         : body < 5 % of range — indecision
+    is_pin_bar      : either hammer or shooting star
+    """
+    empty = {
+        "candle_range":    None,
+        "body":            None,
+        "upper_wick":      None,
+        "lower_wick":      None,
+        "upper_wick_pct":  None,
+        "lower_wick_pct":  None,
+        "body_pct":        None,
+        "candle_type":     None,
+        "is_hammer":       None,
+        "is_shooting_star": None,
+        "is_doji":         None,
+        "is_pin_bar":      None,
+    }
+    if len(close) < 1:
+        return empty
+    try:
+        o = float(open_.iloc[-1])
+        h = float(high.iloc[-1])
+        l = float(low.iloc[-1])
+        c = float(close.iloc[-1])
+
+        candle_range = h - l
+        if candle_range == 0:
+            # Zero-range candle (e.g. halted trading) — return zeros not None
+            return {
+                "candle_range":     0.0,
+                "body":             0.0,
+                "upper_wick":       0.0,
+                "lower_wick":       0.0,
+                "upper_wick_pct":   0.0,
+                "lower_wick_pct":   0.0,
+                "body_pct":         0.0,
+                "candle_type":      "doji",
+                "is_hammer":        False,
+                "is_shooting_star": False,
+                "is_doji":          True,
+                "is_pin_bar":       False,
+            }
+
+        body        = abs(c - o)
+        body_top    = max(o, c)
+        body_bottom = min(o, c)
+        upper_wick  = h - body_top
+        lower_wick  = body_bottom - l
+
+        upper_wick_pct = round(upper_wick  / candle_range * 100, 2)
+        lower_wick_pct = round(lower_wick  / candle_range * 100, 2)
+        body_pct       = round(body        / candle_range * 100, 2)
+
+        # Candle type
+        if body < candle_range * 0.05:
+            candle_type = "doji"
+        elif c > o:
+            candle_type = "bullish"
+        else:
+            candle_type = "bearish"
+
+        # Pattern flags
+        is_doji         = body_pct < 5.0
+        is_hammer       = (
+            lower_wick  >= 2.0 * body         and
+            upper_wick  <= 0.1 * candle_range  and
+            body_pct    <= 35.0
+        )
+        is_shooting_star = (
+            upper_wick  >= 2.0 * body         and
+            lower_wick  <= 0.1 * candle_range  and
+            body_pct    <= 35.0
+        )
+        is_pin_bar = is_hammer or is_shooting_star
+
+        return {
+            "candle_range":     _safe(candle_range),
+            "body":             _safe(body),
+            "upper_wick":       _safe(upper_wick),
+            "lower_wick":       _safe(lower_wick),
+            "upper_wick_pct":   upper_wick_pct,
+            "lower_wick_pct":   lower_wick_pct,
+            "body_pct":         body_pct,
+            "candle_type":      candle_type,
+            "is_hammer":        is_hammer,
+            "is_shooting_star": is_shooting_star,
+            "is_doji":          is_doji,
+            "is_pin_bar":       is_pin_bar,
+        }
+    except Exception as e:
+        logger.warning(f"Candle Wick calculation error: {e}")
+        return empty
+
+
 def _calc_obv(
     close:      pd.Series,
     volume:     pd.Series,
@@ -552,27 +752,19 @@ def _calc_obv(
     if len(close) < 2 or len(volume) < 2:
         return empty
     try:
-        direction = np.sign(close.diff()).fillna(0)
+        direction  = np.sign(close.diff()).fillna(0)
         obv_series = (direction * volume).cumsum()
-
         obv_latest = _safe(obv_series.iloc[-1])
 
-        obv_sma = None
+        obv_sma   = None
         obv_trend = "neutral"
         if len(obv_series.dropna()) >= sma_length:
-            sma_val = _safe(obv_series.rolling(window=sma_length).mean().iloc[-1])
-            obv_sma = sma_val
+            sma_val   = _safe(obv_series.rolling(window=sma_length).mean().iloc[-1])
+            obv_sma   = sma_val
             if obv_latest is not None and sma_val is not None:
-                if obv_latest > sma_val:
-                    obv_trend = "bullish"
-                elif obv_latest < sma_val:
-                    obv_trend = "bearish"
+                obv_trend = "bullish" if obv_latest > sma_val else "bearish"
 
-        return {
-            "obv":       obv_latest,
-            "obv_sma":   obv_sma,
-            "obv_trend": obv_trend,
-        }
+        return {"obv": obv_latest, "obv_sma": obv_sma, "obv_trend": obv_trend}
     except Exception as e:
         logger.warning(f"OBV calculation error: {e}")
         return empty
@@ -583,10 +775,8 @@ def _calc_volume(
     sma_length: int = 20,
 ) -> dict:
     empty = {
-        "volume_latest":  None,
-        "volume_sma":     None,
-        "volume_ratio":   None,
-        "volume_trend":   None,
+        "volume_latest": None, "volume_sma": None,
+        "volume_ratio":  None, "volume_trend": None,
     }
     if volume is None or volume.empty:
         return empty
@@ -594,8 +784,8 @@ def _calc_volume(
         vol_latest = _safe(volume.iloc[-1])
 
         if len(volume.dropna()) >= sma_length:
-            sma_val   = _safe(volume.rolling(window=sma_length).mean().iloc[-1])
-            ratio     = _safe(vol_latest / sma_val) if sma_val and sma_val > 0 else None
+            sma_val = _safe(volume.rolling(window=sma_length).mean().iloc[-1])
+            ratio   = _safe(vol_latest / sma_val) if sma_val and sma_val > 0 else None
 
             if ratio is None:
                 trend = "insufficient_data"
@@ -607,18 +797,13 @@ def _calc_volume(
                 trend = "below_average"
 
             return {
-                "volume_latest":  vol_latest,
-                "volume_sma":     sma_val,
-                "volume_ratio":   ratio,
-                "volume_trend":   trend,
+                "volume_latest": vol_latest, "volume_sma": sma_val,
+                "volume_ratio":  ratio,      "volume_trend": trend,
             }
-        else:
-            return {
-                "volume_latest":  vol_latest,
-                "volume_sma":     None,
-                "volume_ratio":   None,
-                "volume_trend":   "insufficient_data",
-            }
+        return {
+            "volume_latest": vol_latest, "volume_sma": None,
+            "volume_ratio":  None,       "volume_trend": "insufficient_data",
+        }
     except Exception as e:
         logger.warning(f"Volume calculation error: {e}")
         return empty
@@ -642,8 +827,11 @@ class TechnicalAnalysisHelper:
     """
     Unified OHLCV + Technical Analysis fetcher for Indian stocks.
 
-    All configuration (API keys, exchange, indicator params) is loaded
-    from a .env file.  The ONLY public method is get_technical_analysis().
+    Fallback chain:
+        yfinance (NSE) → Stooq → Twelve Data → Tiingo → yfinance (BSE)
+
+    All configuration loaded from .env.  Single public method:
+        get_technical_analysis(ticker_name, ...)
     """
 
     _EXCHANGE_SUFFIX = {"NSE": ".NS", "BSE": ".BO"}
@@ -682,7 +870,8 @@ class TechnicalAnalysisHelper:
         self.__st_multiplier = float(os.getenv("SUPERTREND_MULTIPLIER", "3.0"))
 
         # ── Donchian params ───────────────────────────────────────────────────
-        self.__donchian_length = int(os.getenv("DONCHIAN_LENGTH", "20"))
+        self.__donchian_length      = int(os.getenv("DONCHIAN_LENGTH",       "20"))
+        self.__donchian_slope_bars  = int(os.getenv("DONCHIAN_SLOPE_BARS",   "5"))
 
         # ── OBV params ────────────────────────────────────────────────────────
         self.__obv_sma_length = int(os.getenv("OBV_SMA_LENGTH", "20"))
@@ -693,19 +882,12 @@ class TechnicalAnalysisHelper:
         self.__cache: dict = {}
 
         if not self.__td_key:
-            logger.info("TWELVE_DATA_API_KEY not set in .env — Twelve Data provider will be skipped")
+            logger.info("TWELVE_DATA_API_KEY not set — Twelve Data will be skipped")
         if not self.__tiingo_key:
-            logger.info("TIINGO_API_KEY not set in .env — Tiingo provider will be skipped")
-
-        logger.info(
-            f"HTTP timeouts — connect: {self.__http_connect_timeout}s  "
-            f"read: {self.__http_read_timeout}s  "
-            f"retries: {self.__http_max_retries}  "
-            f"backoff: {self.__http_backoff}s"
-        )
+            logger.info("TIINGO_API_KEY not set — Tiingo will be skipped")
 
     # =========================================================================
-    # PUBLIC — single entry point for external callers
+    # PUBLIC
     # =========================================================================
 
     def get_technical_analysis(
@@ -724,9 +906,7 @@ class TechnicalAnalysisHelper:
             cached = self.__cache[cache_key]
             return cached if as_dict else json.dumps(cached, indent=2)
 
-        # Step 1 — fetch raw OHLCV via fallback chain
         df, source = self.__fetch_with_fallback(base, yf_ticker, period, interval)
-
         exchange_label = "BSE" if ".BO" in yf_ticker else "NSE"
 
         if df is None:
@@ -736,10 +916,8 @@ class TechnicalAnalysisHelper:
             )
             return result if as_dict else json.dumps(result, indent=2)
 
-        # Step 2 — compute all indicators
         indicators = self.__compute_indicators(df)
 
-        # Step 3 — assemble and cache response
         result = {
             "ticker":        base,
             "exchange":      exchange_label,
@@ -783,11 +961,11 @@ class TechnicalAnalysisHelper:
         self, base: str, yf_ticker: str, period: str, interval: str
     ) -> tuple[Optional[pd.DataFrame], str]:
         providers = [
-            ("yfinance_nse",  self.__try_yfinance),
-            ("stooq",         self.__try_stooq),
-            ("twelve_data",   self.__try_twelve_data),
-            ("tiingo",        self.__try_tiingo),
-            ("yfinance_bse",  self.__try_yfinance_bse),
+            ("yfinance_nse", self.__try_yfinance),
+            ("stooq",        self.__try_stooq),
+            ("twelve_data",  self.__try_twelve_data),
+            ("tiingo",       self.__try_tiingo),
+            ("yfinance_bse", self.__try_yfinance_bse),
         ]
         for name, fn in providers:
             try:
@@ -800,35 +978,35 @@ class TechnicalAnalysisHelper:
                 time.sleep(self.__retry_delay)
         return None, "none"
 
-    def __try_yfinance(self, base: str, yf_ticker: str, period: str, interval: str) -> pd.DataFrame:
+    def __try_yfinance(self, base, yf_ticker, period, interval):
         return _fetch_yfinance(yf_ticker, period, interval)
 
-    def __try_stooq(self, base: str, yf_ticker: str, period: str, interval: str) -> pd.DataFrame:
+    def __try_stooq(self, base, yf_ticker, period, interval):
         if interval not in ("1d", "1wk", "1mo"):
             raise ValueError(f"Stooq skipped — intraday interval '{interval}' not supported")
         return _fetch_stooq(base, period)
 
-    def __try_twelve_data(self, base: str, yf_ticker: str, period: str, interval: str) -> pd.DataFrame:
+    def __try_twelve_data(self, base, yf_ticker, period, interval):
         return _fetch_twelve_data(
             base, yf_ticker, period, interval, self.__td_key,
-            connect_timeout = self.__http_connect_timeout,
-            read_timeout    = self.__http_read_timeout,
-            max_retries     = self.__http_max_retries,
-            backoff         = self.__http_backoff,
+            connect_timeout=self.__http_connect_timeout,
+            read_timeout=self.__http_read_timeout,
+            max_retries=self.__http_max_retries,
+            backoff=self.__http_backoff,
         )
 
-    def __try_tiingo(self, base: str, yf_ticker: str, period: str, interval: str) -> pd.DataFrame:
+    def __try_tiingo(self, base, yf_ticker, period, interval):
         if interval not in ("1d", "1wk", "1mo"):
-            raise ValueError(f"Tiingo fallback only supported for daily/weekly/monthly intervals")
+            raise ValueError("Tiingo only supports daily/weekly/monthly intervals")
         return _fetch_tiingo(
             base, period, self.__tiingo_key,
-            connect_timeout = self.__http_connect_timeout,
-            read_timeout    = self.__http_read_timeout,
-            max_retries     = self.__http_max_retries,
-            backoff         = self.__http_backoff,
+            connect_timeout=self.__http_connect_timeout,
+            read_timeout=self.__http_read_timeout,
+            max_retries=self.__http_max_retries,
+            backoff=self.__http_backoff,
         )
 
-    def __try_yfinance_bse(self, base: str, yf_ticker: str, period: str, interval: str) -> pd.DataFrame:
+    def __try_yfinance_bse(self, base, yf_ticker, period, interval):
         return _fetch_yfinance_bse(base, period, interval)
 
     # =========================================================================
@@ -839,6 +1017,7 @@ class TechnicalAnalysisHelper:
         high   = df["high"]
         low    = df["low"]
         close  = df["close"]
+        open_  = df["open"]
         volume = df["volume"]
 
         return {
@@ -854,37 +1033,43 @@ class TechnicalAnalysisHelper:
             },
             "rsi": _calc_rsi_full(
                 close,
-                rsi_length = self.__rsi_length,
-                sma_length = self.__rsi_sma_length,
-                ema_length = self.__rsi_ema_length,
+                rsi_length=self.__rsi_length,
+                sma_length=self.__rsi_sma_length,
+                ema_length=self.__rsi_ema_length,
             ),
             "adx": _calc_adx(
                 high, low, close,
-                adx_length    = self.__adx_length,
-                adx_smoothing = self.__adx_smoothing,
+                adx_length=self.__adx_length,
+                adx_smoothing=self.__adx_smoothing,
             ),
             "psar": _calc_psar(
                 high, low, close,
-                af_start = self.__psar_af_start,
-                af_step  = self.__psar_af_step,
-                af_max   = self.__psar_af_max,
+                af_start=self.__psar_af_start,
+                af_step=self.__psar_af_step,
+                af_max=self.__psar_af_max,
             ),
             "supertrend": _calc_supertrend(
                 high, low, close,
-                period     = self.__st_period,
-                multiplier = self.__st_multiplier,
+                period=self.__st_period,
+                multiplier=self.__st_multiplier,
             ),
             "donchian": _calc_donchian(
                 high, low,
-                length = self.__donchian_length,
+                length=self.__donchian_length,
             ),
+            "donchian_slope": _calc_donchian_slope(
+                high, low,
+                dc_length=self.__donchian_length,
+                slope_bars=self.__donchian_slope_bars,
+            ),
+            "candle_wick": _calc_candle_wick(open_, high, low, close),
             "obv": _calc_obv(
                 close, volume,
-                sma_length = self.__obv_sma_length,
+                sma_length=self.__obv_sma_length,
             ),
             "volume": _calc_volume(
                 volume,
-                sma_length = self.__volume_sma_length,
+                sma_length=self.__volume_sma_length,
             ),
             "delivery": _calc_delivery(),
         }
@@ -906,16 +1091,25 @@ class TechnicalAnalysisHelper:
             "period":        period,
             "interval":      interval,
             "indicators": {
-                "sma":        {"sma_20": None, "sma_30": None, "sma_50": None},
-                "ema":        {"ema_20": None, "ema_30": None, "ema_50": None},
-                "rsi":        {"rsi": None, "rsi_sma": None, "rsi_ema": None},
-                "adx":        {"adx": None, "di_plus": None, "di_minus": None},
-                "psar":       {"psar": None, "psar_trend": None},
-                "supertrend": {"supertrend": None, "supertrend_trend": None},
-                "donchian":   {"upper": None, "middle": None, "lower": None},
-                "obv":        {"obv": None, "obv_sma": None, "obv_trend": None},
-                "volume":     {"volume_latest": None, "volume_sma": None, "volume_ratio": None, "volume_trend": None},
-                "delivery":   {"delivery_pct": None, "source_note": "Requires NSE/BSE Bhavcopy — not available from current data providers"},
+                "sma":            {"sma_20": None, "sma_30": None, "sma_50": None},
+                "ema":            {"ema_20": None, "ema_30": None, "ema_50": None},
+                "rsi":            {"rsi": None, "rsi_sma": None, "rsi_ema": None},
+                "adx":            {"adx": None, "di_plus": None, "di_minus": None},
+                "psar":           {"psar": None, "psar_trend": None},
+                "supertrend":     {"supertrend": None, "supertrend_trend": None},
+                "donchian":       {"upper": None, "middle": None, "lower": None},
+                "donchian_slope": {"slope": None, "slope_pct": None, "slope_direction": None},
+                "candle_wick": {
+                    "candle_range": None, "body": None,
+                    "upper_wick": None,   "lower_wick": None,
+                    "upper_wick_pct": None, "lower_wick_pct": None, "body_pct": None,
+                    "candle_type": None,
+                    "is_hammer": None, "is_shooting_star": None,
+                    "is_doji": None,   "is_pin_bar": None,
+                },
+                "obv":            {"obv": None, "obv_sma": None, "obv_trend": None},
+                "volume":         {"volume_latest": None, "volume_sma": None, "volume_ratio": None, "volume_trend": None},
+                "delivery":       {"delivery_pct": None, "source_note": "Requires NSE/BSE Bhavcopy — not available from current data providers"},
             },
             "error": error,
         }

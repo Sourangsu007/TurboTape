@@ -11,6 +11,7 @@ const CoreAnalysisPage = () => {
     const [rawDetails, setRawDetails] = useState(null);
     const [technicalDetails, setTechnicalDetails] = useState(null);
     const [detailPopup, setDetailPopup] = useState(null);
+    const [portfolioType, setPortfolioType] = useState('core');
     const fileInputRef = useRef(null);
 
     const createInitialStock = (name) => ({
@@ -91,7 +92,7 @@ const CoreAnalysisPage = () => {
                 updatedStocks[i] = { ...stock, isLoading: true, error: null };
                 setStocks([...updatedStocks]);
                 try {
-                    const r = await stockService.analyzeStock(stock.name, 'Core', 'buy');
+                    const r = await stockService.analyzeStock(stock.name, portfolioType, 'buy');
 
                     // Defensive binding — handle result/result_1, reason/reason_1 shapes
                     const fundResult = r.result_1 || r.result || '-';
@@ -144,7 +145,14 @@ const CoreAnalysisPage = () => {
                     }));
 
                 if (batchInput.length > 0) {
-                    const rankingResults = await stockService.rankAll(batchInput);
+                    const rankingResults = await stockService.rankAll(
+                        batchInput.map(s => ({
+                            name: s.StockName,
+                            financial_data: s.Financials,
+                            stage_analysis: s.Stage
+                        })),
+                        portfolioType
+                    );
                     const ranks = rankingResults.ranking_results || [];
                     const finalizedStocks = updatedStocks.map(s => {
                         const rankData = ranks.find(r =>
@@ -188,7 +196,7 @@ const CoreAnalysisPage = () => {
         setStocks([...updatedStocks]);
 
         try {
-            const r = await stockService.analyzeStock(stockName, 'Core', 'buy');
+            const r = await stockService.analyzeStock(stockName, portfolioType, 'buy');
 
             // Reusing defensive binding logic
             const fundResult = r.result_1 || r.result || '-';
@@ -261,8 +269,25 @@ const CoreAnalysisPage = () => {
             </header>
 
             <div className="actions-bar">
-                <div className="left-actions">
-                    <button className="btn btn-secondary" onClick={() => setShowAddPopup(true)} disabled={isAnalyzing}>
+                <div className="header-actions">
+                    <div className="portfolio-tabs">
+                        <button
+                            className={`tab-btn ${portfolioType === 'core' ? 'active' : ''}`}
+                            onClick={() => setPortfolioType('core')}
+                            disabled={isAnalyzing}
+                        >
+                            Core
+                        </button>
+                        <button
+                            className={`tab-btn ${portfolioType === 'sattelite' ? 'active' : ''}`}
+                            onClick={() => setPortfolioType('sattelite')}
+                            disabled={isAnalyzing}
+                        >
+                            Sattelite
+                        </button>
+                    </div>
+                    <button
+                        className="btn btn-secondary" onClick={() => setShowAddPopup(true)} disabled={isAnalyzing}>
                         <span className="icon">+</span> Add Stock
                     </button>
                     <button className="btn btn-secondary" onClick={() => fileInputRef.current.click()} disabled={isAnalyzing}>
@@ -487,6 +512,20 @@ const CoreAnalysisPage = () => {
                                     <div className="ta-metric"><strong>Upper:</strong> <span>{technicalDetails.data.indicators.donchian.upper || '-'}</span></div>
                                     <div className="ta-metric"><strong>Middle:</strong> <span>{technicalDetails.data.indicators.donchian.middle || '-'}</span></div>
                                     <div className="ta-metric"><strong>Lower:</strong> <span>{technicalDetails.data.indicators.donchian.lower || '-'}</span></div>
+                                    <div className="ta-metric">
+                                        <strong>Slope:</strong>
+                                        <span className={`trend-${technicalDetails.data.indicators.donchian_slope.slope_direction}`}>
+                                            {technicalDetails.data.indicators.donchian_slope.slope_pct?.toFixed(2)}% ({technicalDetails.data.indicators.donchian_slope.slope_direction})
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="ta-section">
+                                    <h4>Candle Analysis</h4>
+                                    <div className="ta-metric"><strong>Type:</strong> <span className={`candle-${technicalDetails.data.indicators.candle_wick.candle_type}`}>{technicalDetails.data.indicators.candle_wick.candle_type}</span></div>
+                                    <div className="ta-metric"><strong>Body:</strong> <span>{technicalDetails.data.indicators.candle_wick.body_pct}%</span></div>
+                                    {technicalDetails.data.indicators.candle_wick.is_hammer && <div className="ta-tag bull">🔨 Hammer</div>}
+                                    {technicalDetails.data.indicators.candle_wick.is_shooting_star && <div className="ta-tag bear">🌠 Shooting Star</div>}
+                                    {technicalDetails.data.indicators.candle_wick.is_doji && <div className="ta-tag">⚖️ Doji</div>}
                                 </div>
                             </div>
                             <div className="ta-footer">

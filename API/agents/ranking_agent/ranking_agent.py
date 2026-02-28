@@ -10,14 +10,17 @@ class RankingAgent:
         self.llm = get_llm_instance()
         self.prompt_path = Path(__file__).parent / "ranking_prompt.md"
 
-    def execute_batch(self, analysis_results: list):
+    def execute_batch(self, analysis_results: list, portfolio_type: str = "core"):
         """
         Executes a comparative ranking across multiple stock analysis results.
         """
-        if not self.prompt_path.exists():
-            raise FileNotFoundError(f"Ranking prompt file not found at {self.prompt_path}")
+        prompt_filename = "ranking_prompt_Sattelite.md" if portfolio_type.lower() == "sattelite" else "ranking_prompt.md"
+        curr_prompt_path = Path(__file__).parent / prompt_filename
+
+        if not curr_prompt_path.exists():
+            raise FileNotFoundError(f"Ranking prompt file not found at {curr_prompt_path}")
             
-        with open(self.prompt_path, "r") as f:
+        with open(curr_prompt_path, "r") as f:
             template = f.read()
             
         # We'll use a specific placeholder for the batch data

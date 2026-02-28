@@ -114,6 +114,23 @@ class ResilientLLM:
         Exception  if every model in the fallback chain fails
         """
         try:
+            # Groq/LiteLLM JSON mode safety: Groq requires 'json' in the prompt for json_object format.
+            if kwargs.get("response_format") == {"type": "json_object"}:
+                json_found = False
+                for m in messages:
+                    content = m.get("content", "")
+                    if isinstance(content, str) and "json" in content.lower():
+                        json_found = True
+                        break
+                
+                if not json_found:
+                    logger.info("ResilientLLM: Injecting 'json' requirement for Groq compatibility.")
+                    # Append it to the last user message or add a new system message
+                    messages.append({
+                        "role": "system", 
+                        "content": "CRITICAL: The output must be valid JSON."
+                    })
+
             response = self.router.completion(
                 model    = self._PRIMARY_MODEL,
                 messages = messages,

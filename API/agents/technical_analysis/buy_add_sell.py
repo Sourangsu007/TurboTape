@@ -11,14 +11,17 @@ class BuyAddSellAgent:
         self.llm = get_llm_instance()
         self.prompt_path = Path(__file__).parent / "buy_add_sell.md"
 
-    def execute(self, stock_name: str, technical_data: dict, stage_data: any):
+    def execute(self, stock_name: str, technical_data: dict, stage_data: any, portfolio_type: str = "core"):
         """
         Evaluates the stock and returns a decision with reasoning.
         """
-        if not self.prompt_path.exists():
-            return {"Decision": "None", "Reasoning": "Prompt file missing."}
+        prompt_filename = "buy_add_sell_sat.md" if portfolio_type.lower() == "sattelite" else "buy_add_sell.md"
+        curr_prompt_path = Path(__file__).parent / prompt_filename
 
-        with open(self.prompt_path, "r") as f:
+        if not curr_prompt_path.exists():
+            return {"Decision": "None", "Reasoning": f"Prompt file {prompt_filename} missing."}
+
+        with open(curr_prompt_path, "r") as f:
             template = f.read()
 
         # Prepare stage data string for the prompt

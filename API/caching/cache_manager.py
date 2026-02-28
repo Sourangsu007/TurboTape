@@ -30,8 +30,8 @@ class CacheManager:
     def delete(self, key):
         self.cache.delete(key)
 
-    def get_analysis_key(self, stock_name):
-        return f"{stock_name.upper()}_Core"
+    def get_analysis_key(self, stock_name, portfolio_type):
+        return f"{stock_name.upper()}_{portfolio_type.upper()}"
 
     def get_raw_data_key(self, ticker):
         return f"{ticker.upper()}_raw"

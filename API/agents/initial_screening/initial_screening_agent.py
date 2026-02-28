@@ -68,6 +68,7 @@ class InitialScreeningAgent:
                 # Step 2.1: Screener.in Fallback
                 if missing_count > 3:
                     try:
+                        print(f"Screener scraping triggered for {stock_name}")
                         from agents.initial_screening.Screener_Scrapper import ScreenerScraper
                         scraper = ScreenerScraper()
                         screener_data = scraper.GetFinanceValues(ticker_name)
@@ -87,6 +88,7 @@ class InitialScreeningAgent:
 
                 # Step 2.5: LLM Data Fallback Mechanism
                 if missing_count > 3:
+                    print(f"LLM fallback triggered for {stock_name}")
                     fallback_prompt_path = Path(__file__).parent / "fallback.md"
                     if fallback_prompt_path.exists():
                         with open(fallback_prompt_path, "r") as f:

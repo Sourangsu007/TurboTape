@@ -36,7 +36,7 @@ Assign the rank based on the following cumulative scoring hierarchy:
 ---
 
 ### TASK & OUTPUT FORMAT
-For the provided list, evaluate every stock against the questionnaire logic below and provide the final result as a **strict JSON array** with the following structure:
+For the provided list, evaluate every stock against the questionnaire logic below and provide the final result as a strict **JSON** array with the following structure:
 
 ```json
 {

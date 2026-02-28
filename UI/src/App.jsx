@@ -9,9 +9,8 @@ function App() {
     <Router>
       <div className="main-app">
         <Routes>
-          <Route path="/" element={<Navigate to="/core" replace />} />
-          <Route path="/core" element={<CoreAnalysisPage />} />
-          <Route path="/analyze" element={<AnalyzePage />} />
+          <Route path="/" element={<Navigate to="/analyze" replace />} />
+          <Route path="/analyze" element={<CoreAnalysisPage />} />
         </Routes>
       </div>
     </Router>

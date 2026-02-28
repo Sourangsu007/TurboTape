@@ -17,17 +17,18 @@ class AgentOrchestrator:
         self.technical_helper = TechnicalAnalysisHelper()
         self.buy_add_sell_agent = BuyAddSellAgent()
 
-    def rank_all(self, data: list):
+    def rank_all(self, data: list, portfolio_type: str = "core"):
         """
         Ranks a collection of analyzed stock data.
         """
-        return self.ranking_agent.execute_batch(data)
+        return self.ranking_agent.execute_batch(data, portfolio_type)
 
     def execute(self, stock_name: str, data: any):
         """
         Coordinates the execution of agents for a specific stock analysis task.
         """
-        print(f"Orchestrating analysis for: {stock_name} (Purpose: {data.purpose})")
+        portfolio_type = data.portfolio_type if hasattr(data, 'portfolio_type') else "core"
+        print(f"Orchestrating analysis for: {stock_name} (Purpose: {data.purpose}, Portfolio: {portfolio_type})")
         
         # Phase 1: Initial Screening
         print("Starting Initial Screening Phase...")
@@ -35,7 +36,8 @@ class AgentOrchestrator:
         
         if not screening_result.get("success"):
             return screening_result
-        ticker_name=screening_result.get("ticker_name", "")
+        ticker_name = screening_result.get("ticker_name", "")
+
         # Phase 2: Stage Analysis
         print("Starting Stage Analysis Phase...")
         stage_result = self.stage_analysis_agent.execute(
@@ -65,7 +67,8 @@ class AgentOrchestrator:
         decision_result = self.buy_add_sell_agent.execute(
             stock_name=stock_name,
             technical_data=technical_result,
-            stage_data=stage_result.get("stage_analysis")
+            stage_data=stage_result.get("stage_analysis"),
+            portfolio_type=portfolio_type
         )
 
         # Combine Results

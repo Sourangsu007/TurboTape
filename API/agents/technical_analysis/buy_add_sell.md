@@ -27,7 +27,7 @@ A "Sell" decision is triggered if:
 ---
 
 ## Output Format
-Return your analysis in the following JSON-like structure:
+Return your analysis in the following **JSON** structure:
 - **Decision:** [Buy / Add / Sell / None]
 - **Reasoning:** [A concise point-by-point explanation referencing the specific indicators and rules met or failed.]
 

@@ -48,8 +48,8 @@ The analysis must be based on the following metrics:
 
 ---
 
-## OUTPUT FORMAT (JSON)
-Provide the final analysis in the following JSON structure:
+## OUTPUT FORMAT (**JSON**)
+Provide the final analysis in the following **JSON** structure:
 
 ```json
 [
