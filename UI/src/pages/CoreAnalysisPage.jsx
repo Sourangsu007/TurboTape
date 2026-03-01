@@ -328,7 +328,7 @@ const CoreAnalysisPage = () => {
                     </thead>
                     <tbody>
                         {stocks.map((stock) => (
-                            <tr key={stock.name} className={stock.isLoading ? 'row-loading' : ''}>
+                            <tr key={stock.name} className={stock.isLoading ? 'row-loading' : ''} data-ticker={stock.ticker_name}>
                                 <td className="stock-name-cell">
                                     <div className="stock-info">
                                         {stock.isLoading && <div className="spinner-small"></div>}

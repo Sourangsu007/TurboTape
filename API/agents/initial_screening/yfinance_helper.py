@@ -150,42 +150,30 @@ class YFinanceHelper:
                     roe_series = (net_inc.loc[common_idx] / equity.loc[common_idx] * 100)
 
             metrics["Return on equity (Current)"] = clean_num(roe_series.iloc[0]) if roe_series is not None and not roe_series.empty else "N/A"
+            metrics["Return on equity preceding year"] = clean_num(roe_series.iloc[1]) if roe_series is not None and len(roe_series) > 1 else "N/A"
             for y in [3, 5, 7, 10]:
                 metrics[f"Average return on equity {y}Years"] = calc_avg(roe_series, y)
 
             roce_series = None
             if ebit is not None and assets is not None and curr_liab is not None:
-                        # 1. Align all data to the EBIT dates to avoid intersection empty-sets
-                        # This maps the closest Balance Sheet date to the Income Statement date
                         try:
-                            # Reindexing ensures we have the same dates across all three series
                             aligned_assets = assets.reindex(ebit.index, method='nearest')
                             aligned_liab = curr_liab.reindex(ebit.index, method='nearest')
-        
                             cap_employed = aligned_assets - aligned_liab
-        
-                            # Avoid division by zero
                             roce_series = (ebit / cap_employed.replace(0, np.nan)) * 100
                         except Exception:
                             roce_series = None
 
-            # Now your existing metrics assignment will work
             metrics["Return on capital employed (Current ROCE)"] = clean_num(roce_series.iloc[0]) if roce_series is not None and not roce_series.empty else "N/A"
             for y in [3, 5, 7, 10]:
                 metrics[f"Average return on capital employed {y}Years"] = calc_avg(roce_series, y)
 
             # 3. Solvency & Cash Flow
-            common_solv_idx = equity.index.intersection(debt.index) if equity is not None and debt is not None else None
             if debt_series is not None and equity is not None:
-                # Reindex debt to match equity dates to handle minor date mismatches
                 aligned_debt = debt_series.reindex(equity.index, method='nearest')
-                
-                # Calculate series
                 d_e_series = aligned_debt / equity.replace(0, np.nan)
-    
                 metrics["Debt to equity"] = clean_num(d_e_series.iloc[0])
             else:
-                # Last ditch effort: Try the 'info' dictionary which often has a pre-calc'd ratio
                 d_e_info = info.get('debtToEquity')
                 metrics["Debt to equity"] = clean_num(d_e_info / 100) if d_e_info else "N/A"
             
@@ -204,6 +192,13 @@ class YFinanceHelper:
             metrics["Up from 52w low"] = round(((curr_price - low_52w) / low_52w * 100), 2) if curr_price and low_52w else "N/A"
             metrics["Down from 52w high"] = round(((high_52w - curr_price) / high_52w * 100), 2) if curr_price and high_52w else "N/A"
             
+            metrics["currentPrice"] = clean_num(curr_price)
+            metrics["fiftyTwoWeekHigh"] = clean_num(high_52w)
+            metrics["fiftyTwoWeekLow"] = clean_num(low_52w)
+            metrics["bookValue"] = clean_num(info.get('bookValue'))
+            metrics["dividendYield"] = clean_num(info.get('dividendYield', 0) * 100) if info.get('dividendYield') is not None else "N/A"
+            metrics["trailingPE"] = clean_num(info.get('trailingPE'))
+            
             metrics["Net block (Current)"] = clean_num(net_block.iloc[0]) if net_block is not None and not net_block.empty else "N/A"
             metrics["Net block (Preceding Year)"] = clean_num(net_block.iloc[1]) if net_block is not None and len(net_block) > 1 else "N/A"
             metrics["Capital work in progress (Current)"] = clean_num(cwip.iloc[0]) if cwip is not None and not cwip.empty else "N/A"
@@ -211,44 +206,40 @@ class YFinanceHelper:
 
             # 5. Ownership & Size
             metrics["Market Capitalization"] = info.get('marketCap', "N/A")
-            metrics["Promoter holding"] = info.get('heldPercentInsiders', "N/A")
+            metrics["Promoter holding"] = clean_num(info.get('heldPercentInsiders', 0) * 100) if info.get('heldPercentInsiders') is not None else "N/A"
+            metrics["Pledged percentage"] = clean_num(info.get('pledgedPercent', 0) * 100) if info.get('pledgedPercent') is not None else "N/A"
+            metrics["Industry"] = info.get('industry', 'Unknown')
+            
+            # Detect Financial
+            fin_keywords = ["bank", "finance", "nbfc", "insurance", "fintech", "lending", "investment"]
+            metrics["isFinancial"] = any(k in str(metrics["Industry"]).lower() for k in fin_keywords)
+
             # 6. Additional Financial Sector Metrics
-            # YOY Quarterly sales growth
             quarterly_income = ticker.quarterly_financials
             q_rev = get_row(quarterly_income, ["Total Revenue", "Operating Revenue", "Revenue"])
             if q_rev is not None and len(q_rev) >= 5 and not pd.isna(q_rev.iloc[4]) and q_rev.iloc[4] != 0:
                 metrics["YOY Quarterly sales growth"] = clean_num(((q_rev.iloc[0] - q_rev.iloc[4]) / abs(q_rev.iloc[4])) * 100)
             else:
-                metrics["YOY Quarterly sales growth"] = info.get('revenueGrowth', "N/A")
-                if metrics["YOY Quarterly sales growth"] != "N/A":
-                    metrics["YOY Quarterly sales growth"] = clean_num(metrics["YOY Quarterly sales growth"] * 100)
+                rev_growth = info.get('revenueGrowth')
+                metrics["YOY Quarterly sales growth"] = clean_num(rev_growth * 100) if rev_growth is not None else "N/A"
 
-            # Interest last year
             metrics["Interest last year"] = clean_num(int_exp.iloc[1]) if int_exp is not None and len(int_exp) > 1 else "N/A"
 
-            # Financial leverage (Total Assets / Total Equity)
             if assets is not None and equity is not None:
                 common_lev_idx = assets.index.intersection(equity.index)
                 if not common_lev_idx.empty:
-                    fin_lev_series = assets.loc[common_lev_idx] / equity.loc[common_lev_idx].replace(0, np.nan)
-                    metrics["Financial leverage"] = clean_num(fin_lev_series.iloc[0])
+                    metrics["Financial leverage"] = clean_num(assets.loc[common_lev_idx].iloc[0] / equity.loc[common_lev_idx].replace(0, np.nan).iloc[0])
                 else:
                     metrics["Financial leverage"] = "N/A"
             else:
                  metrics["Financial leverage"] = "N/A"
 
-            # Return on assets
             metrics["Return on assets"] = clean_num(info.get('returnOnAssets', 0) * 100) if info.get('returnOnAssets') is not None else "N/A"
             if metrics["Return on assets"] == "N/A" and net_inc is not None and assets is not None:
                  common_roa_idx = net_inc.index.intersection(assets.index)
                  if not common_roa_idx.empty:
-                     roa_series = (net_inc.loc[common_roa_idx] / assets.loc[common_roa_idx].replace(0, np.nan) * 100)
-                     metrics["Return on assets"] = clean_num(roa_series.iloc[0])
+                     metrics["Return on assets"] = clean_num(net_inc.loc[common_roa_idx].iloc[0] / assets.loc[common_roa_idx].replace(0, np.nan).iloc[0] * 100)
 
-            # Return on equity preceding year
-            metrics["Return on equity preceding year"] = clean_num(roe_series.iloc[1]) if roe_series is not None and len(roe_series) > 1 else "N/A"
-
-            # NCAVPS (Net Current Asset Value Per Share) = (Current Assets - Total Liabilities) / Shares Outstanding
             curr_assets = get_row(balance_sheet, ["Total Current Assets", "Current Assets"])
             total_liab = get_row(balance_sheet, ["Total Liabilities Net Minority Interest", "Total Liabilities"])
             shares_out = info.get('sharesOutstanding')
@@ -263,10 +254,7 @@ class YFinanceHelper:
             else:
                 metrics["NCAVPS"] = "N/A"
 
-            # PEG Ratio
             metrics["PEG Ratio"] = info.get('pegRatio', "N/A")
-
-            # Dividend Payout Ratio
             metrics["Dividend Payout Ratio"] = clean_num(info.get('payoutRatio', 0) * 100) if info.get('payoutRatio') is not None else "N/A"
 
             return metrics

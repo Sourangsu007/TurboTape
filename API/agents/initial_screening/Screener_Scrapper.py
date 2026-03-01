@@ -651,6 +651,15 @@ class ScreenerScraper:
             metrics["Market Capitalization"] = price_info.get("marketCap", "N/A")
             metrics["Promoter holding"] = shareholding.get("promoterHolding", "N/A")
             
+            # Pledged percentage - from top ratios or Peer section often
+            metrics["Pledged percentage"] = price_info.get("pledged", "N/A")
+            if metrics["Pledged percentage"] == "N/A":
+                 # Try ratios table if present
+                 for r_name in ratios_raw:
+                     if "pledged" in r_name.lower():
+                         metrics["Pledged percentage"] = list(ratios_raw[r_name].values())[-1]
+                         break
+
             # --- Missing Price/Ratio Info (Crucial for UI) ---
             metrics["currentPrice"] = price_info.get("currentPrice", "N/A")
             metrics["fiftyTwoWeekHigh"] = price_info.get("fiftyTwoWeekHigh", "N/A")
@@ -662,14 +671,13 @@ class ScreenerScraper:
             metrics["roce"] = price_info.get("roce", "N/A")
 
             # Industry & Financial Detection
-            industry_tag = soup.find("p", {"class": "sub"}) 
-            # Industry is usually in breadcrumbs or peer section, but we can look broadly
-            industry = ""
-            peer_section = soup.find("section", {"id": "peers"})
-            if peer_section:
-                ind_link = peer_section.find("a", href=re.compile(r"/company/industry/"))
-                if ind_link:
-                    industry = ind_link.get_text(strip=True)
+            industry = price_info.get("industry", "")
+            if not industry:
+                peer_section = soup.find("section", {"id": "peers"})
+                if peer_section:
+                    ind_link = peer_section.find("a", href=re.compile(r"/company/industry/"))
+                    if ind_link:
+                        industry = ind_link.get_text(strip=True)
             
             metrics["Industry"] = industry
             metrics["isFinancial"] = self._is_financial_institution(soup, industry)

@@ -33,6 +33,9 @@ Return your analysis in the following **JSON** structure:
 
 ---
 
+# IMPORTANT
+**ONLY USE THE LOGIC ABOVE FOR THE ANALYSIS. DO NOT USE ANY OTHER LOGIC.**
+
 ## User Input Data
 Stock Name: {{stock_name}}
 Technical Data : {{technical_data}}

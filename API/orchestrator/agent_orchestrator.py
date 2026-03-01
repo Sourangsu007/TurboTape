@@ -23,6 +23,27 @@ class AgentOrchestrator:
         """
         return self.ranking_agent.execute_batch(data, portfolio_type)
 
+    def clear_cache(self, stock_name: str, ticker: str = None):
+        """
+        Clears both analysis-level and data-level caches for a stock.
+        """
+        # 1. Clear Analysis Caches (stockName_portfolioType)
+        core_key = cache_manager.get_analysis_key(stock_name, "core")
+        satellite_key = cache_manager.get_analysis_key(stock_name, "sattelite")
+        cache_manager.delete(core_key)
+        cache_manager.delete(satellite_key)
+        print(f"Cleared analysis cache for {stock_name}")
+
+        # 2. Clear Data Caches if ticker is provided
+        if ticker and ticker.strip():
+            raw_key = cache_manager.get_raw_data_key(ticker)
+            tech_key = cache_manager.get_tech_data_key(ticker)
+            cache_manager.delete(raw_key)
+            cache_manager.delete(tech_key)
+            print(f"Cleared raw/tech data cache for ticker: {ticker}")
+        
+        return True
+
     def execute(self, stock_name: str, data: any):
         """
         Coordinates the execution of agents for a specific stock analysis task.

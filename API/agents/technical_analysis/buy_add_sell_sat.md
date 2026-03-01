@@ -41,6 +41,9 @@ Return the result in the following **JSON** format:
 - **Decision**: [Buy / Add / Sell / None]
 - **Reasoning**: [Provide a concise, point-by-point justification referencing the specific metrics provided.]
 
+# IMPORTANT
+**ONLY USE THE LOGIC ABOVE FOR THE ANALYSIS. DO NOT USE ANY OTHER LOGIC.**
+
 # Input Data
 Stock Name: {{stock_name}}
 Technical Data : {{technical_data}}

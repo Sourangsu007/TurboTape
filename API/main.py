@@ -39,25 +39,9 @@ async def analyze_stock(stockname: str, body: AnalyzeStock):
 
 @app.post("/cacheclear/{stockname}")
 async def clear_cache(stockname: str, ticker: str = None):
-    # Clear Core and Satellite Caches
-    core_key = cache_manager.get_analysis_key(stockname, "core")
-    satellite_key = cache_manager.get_analysis_key(stockname, "sattelite")
-    cache_manager.delete(core_key)
-    cache_manager.delete(satellite_key)
-    
-    # Clear Tech Cache (try both stockname and ticker if available)
-    tech_key_name = cache_manager.get_tech_data_key(stockname)
-    cache_manager.delete(tech_key_name)
-    
-    # Clear Data Caches if ticker is provided
-    if ticker and ticker.strip():
-        raw_key = cache_manager.get_raw_data_key(ticker)
-        tech_key_ticker = cache_manager.get_tech_data_key(ticker)
-        cache_manager.delete(raw_key)
-        cache_manager.delete(tech_key_ticker)
-        print(f"Cleared all cache for {stockname} (Ticker: {ticker})")
-    else:
-        print(f"Cleared core and tech (stockname-based) cache for {stockname}")
+    # Delegate cache clearing to the orchestrator to ensure data-level caches are also cleared
+    orchestrator.clear_cache(stockname, ticker)
+    return {"success": True, "message": f"Cache cleared for {stockname} (Ticker: {ticker or 'N/A'})"}
         
     return {"success": True, "message": f"Cache cleared for {stockname}"}
 

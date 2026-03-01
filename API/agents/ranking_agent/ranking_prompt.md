@@ -75,6 +75,8 @@ Rules:
 - Overall Stage Position (1, 2, 3, or 4)
 - Promoter Holding & Pledging (>50% Holding, 0% Pledge preferred)
 
+# IMPORTANT
+**ONLY USE THE LOGIC ABOVE FOR THE ANALYSIS. DO NOT USE ANY OTHER LOGIC.**
 
 ### Input Data
 - **Batch Results:**

@@ -56,6 +56,9 @@ For the provided list, evaluate every stock against the logic above and provide 
 }
 ```
 
+# IMPORTANT
+**ONLY USE THE LOGIC ABOVE FOR THE ANALYSIS. DO NOT USE ANY OTHER LOGIC.**
+
 ### Input Data
 - **Batch Results:**
 {{batch_data}}

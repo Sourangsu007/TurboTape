@@ -879,8 +879,6 @@ class TechnicalAnalysisHelper:
         # ── Volume params ─────────────────────────────────────────────────────
         self.__volume_sma_length = int(os.getenv("VOLUME_SMA_LENGTH", "20"))
 
-        self.__cache: dict = {}
-
         if not self.__td_key:
             logger.info("TWELVE_DATA_API_KEY not set — Twelve Data will be skipped")
         if not self.__tiingo_key:
@@ -899,12 +897,6 @@ class TechnicalAnalysisHelper:
         force_refresh: bool = False,
     ):
         base, yf_ticker = self.__normalise(ticker_name)
-        cache_key       = f"{yf_ticker}|{period}|{interval}|ta"
-
-        if not force_refresh and cache_key in self.__cache:
-            logger.info(f"Cache hit: {cache_key}")
-            cached = self.__cache[cache_key]
-            return cached if as_dict else json.dumps(cached, indent=2)
 
         df, source = self.__fetch_with_fallback(base, yf_ticker, period, interval)
         exchange_label = "BSE" if ".BO" in yf_ticker else "NSE"
@@ -931,12 +923,11 @@ class TechnicalAnalysisHelper:
             "error":         None,
         }
 
-        self.__cache[cache_key] = result
         logger.info(f"✓ Technical analysis complete for {base} via {source}")
         return result if as_dict else json.dumps(result, indent=2)
 
     def clear_cache(self):
-        self.__cache.clear()
+        # In-memory cache removed. Disk cache handled by orchestrator.
         logger.info("TechnicalAnalysisHelper cache cleared")
 
     # =========================================================================
